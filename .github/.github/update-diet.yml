@@ -1,0 +1,31 @@
+name: Auto Update Diet Data
+
+on:
+  schedule:
+    # 매일 아침 6시에 자동 실행 (UTC 시간 기준 21:00 = 한국 시간 06:00)
+    - cron: '0 21 * * *'
+  workflow_dispatch: # 웹에서 수동으로 실행할 수 있는 버튼 활성화
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 저장소 코드 가져오기
+      uses: actions/checkout@v4
+
+    - name: Node.js 환경 세팅
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: 식단 HTML 스크래핑 스크립트 실행
+      run: node scraper.js
+
+    - name: 변경된 HTML 파일을 깃허브에 반영(Commit & Push)
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        git add diet_source_1.html diet_source_2.html
+        # 파일 내용에 변경사항이 있을 때만 커밋을 수행합니다.
+        git diff --quiet && git diff --staged --quiet || (git commit -m "식단 소스 HTML 자동 업데이트" && git push)
