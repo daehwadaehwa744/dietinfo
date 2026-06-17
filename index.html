@@ -375,19 +375,30 @@
         }
 
         async function fetchHtmlWithProxies(url) {
-            try {
-                const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-                const data = await res.json();
-                if (data.contents) return data.contents;
-            } catch(e) { console.warn("Proxy 1 failed", e); }
+            // 안정성이 높은 순서대로 프록시 서버 목록 재구성
+            const proxies = [
+                `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+            ];
+
+            // 프록시 목록을 순회하며 하나라도 성공할 때까지 재시도
+            for (let i = 0; i < proxies.length; i++) {
+                try {
+                    const res = await fetch(proxies[i]);
+                    if (res.ok) {
+                        const text = await res.text();
+                        // 정상적인 HTML을 가져왔는지 최소한의 검증 (빈 응답 방지)
+                        if (text && (text.includes('<html') || text.includes('식단'))) {
+                            return text;
+                        }
+                    }
+                } catch(e) { 
+                    console.warn(`프록시 서버 ${i + 1} 시도 실패`, e); 
+                }
+            }
             
-            try {
-                const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`);
-                const text = await res.text();
-                if (text) return text;
-            } catch(e) { console.warn("Proxy 2 failed", e); }
-            
-            throw new Error("웹사이트 접근 실패 (네트워크 또는 프록시 오류)");
+            throw new Error("모든 우회 서버를 통한 웹사이트 접근에 실패했습니다.");
         }
 
         function toggleSettings() {
