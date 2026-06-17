@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오늘의 식단 - 세로형 키오스크 에디션</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            light: '#FFF9F5', 
+                            DEFAULT: '#FF8C42',
+                            dark: '#E5732F',
+                        },
+                        accent: '#FF3C38',
+                        paper: '#FFF8F0'
+                    },
+                    fontFamily: {
+                        title: ['Jua', 'sans-serif'],
+                        body: ['Noto Sans KR', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #fdf2f0; overflow: hidden; margin: 0; height: 100vh; width: 100vw; }
+        h1, h2, .font-title { font-family: 'Jua', sans-serif; }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(255, 140, 66, 0.3); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: rgba(255, 140, 66, 0.6); }
+
+        @keyframes drift {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            100% { transform: translate(30px, -30px) rotate(10deg); }
+        }
+        .bg-particle {
+            position: absolute; opacity: 0.15; filter: blur(1px);
+            animation: drift 10s infinite ease-in-out alternate;
+            pointer-events: none; z-index: 0;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .menu-item-card {
+            animation: fadeUp 0.6s ease-out forwards;
+            opacity: 0;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.3s ease;
+        }
+        .menu-item-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 20px -8px rgba(0, 0, 0, 0.1);
+        }
+
+        @keyframes text-bob {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-2.5px); }
+        }
+        .card-text-bob {
+            display: inline-block;
+            animation: text-bob 3s infinite ease-in-out;
+        }
+
+        @keyframes title-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+        .title-animate {
+            animation: title-pulse 4s infinite ease-in-out;
+            display: inline-block;
+        }
+
+        @keyframes yummy-pop {
+            0%, 100% { opacity: 0; transform: scale(0.5) rotate(-10deg) translateY(10px); }
+            10% { opacity: 1; transform: scale(1.1) rotate(15deg) translateY(0); }
+            20%, 80% { opacity: 1; transform: scale(1) rotate(12deg) translateY(0); }
+            90% { opacity: 1; transform: scale(1.1) rotate(15deg) translateY(0); }
+        }
+        .yummy-bubble {
+            animation: yummy-pop 7s infinite cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform-origin: bottom left;
+        }
+
+        .special-shimmer-effect {
+            position: absolute;
+            top: 0; left: -150%;
+            width: 100%; height: 100%;
+            background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.8), transparent);
+            transform: skewX(-25deg);
+            animation: shimmer-sweep 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+            z-index: 0;
+        }
+        @keyframes shimmer-sweep { 0% { left: -150%; } 40% { left: 150%; } 100% { left: 150%; } }
+
+        @keyframes seesaw { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+        .utensil-static { opacity: 0.6; animation: seesaw 2.5s infinite ease-in-out alternate; }
+
+        @keyframes float-spin { 0%, 100% { transform: translateY(0) rotate(-15deg); } 50% { transform: translateY(-20px) rotate(15deg); } }
+        .side-deco {
+            position: absolute; opacity: 0.18; color: #FF8C42;
+            animation: float-spin 3s infinite ease-in-out; z-index: 5;
+        }
+
+        /* 전체 화면 및 UI 요소 토글 처리 */
+        .is-pseudo-fullscreen #fab-settings { display: none !important; }
+        .is-pseudo-fullscreen #exit-fullscreen-btn { display: flex !important; opacity: 0.05; transition: opacity 0.3s; }
+        .is-pseudo-fullscreen #exit-fullscreen-btn:hover { opacity: 1; }
+
+        #toast {
+            position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px);
+            background: #333; color: white; padding: 0.75rem 1.5rem; border-radius: 1rem;
+            z-index: 9999; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        #toast.show { transform: translateX(-50%) translateY(0); }
+
+        input[type=range] { accent-color: #FF8C42; }
+
+        @media print {
+            .no-print, #particles-container, #fab-settings, #exit-fullscreen-btn, #toast, .yummy-bubble, #promo-slider { display: none !important; }
+            body { background: white !important; }
+            #poster-wrapper { display: block !important; width: 100% !important; height: 100% !important; transform: none !important; }
+            #poster-canvas { width: 100% !important; height: 100vh !important; margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; transform: none !important; }
+            .menu-item-card, .title-animate, .utensil-static, .special-shimmer-effect { animation: none !important; opacity: 1 !important; transform: none !important; }
+        }
+    </style>
+</head>
+<body class="relative bg-[#fdf2f0] flex justify-center items-center overflow-hidden">
+
+    <div id="particles-container" class="no-print"></div>
+
+    <div id="toast" class="no-print font-medium text-sm flex items-center gap-2">
+        <i data-lucide="info" class="w-4 h-4"></i>
+        <span id="toast-msg">메시지 내용</span>
+    </div>
+
+    <!-- 숨겨진 전체화면 종료 버튼 -->
+    <button id="exit-fullscreen-btn" onclick="toggleFullScreen()" class="hidden fixed top-6 right-6 z-[100] bg-white text-brand p-4 rounded-full shadow-xl border border-orange-100">
+        <i data-lucide="minimize-2" class="w-8 h-8"></i>
+    </button>
+
+    <!-- 플로팅 액션 버튼 (설정 패널 열기) -->
+    <button id="fab-settings" onclick="toggleSettings()" class="no-print fixed bottom-8 right-8 z-[90] bg-brand text-white p-4 md:px-6 md:py-4 rounded-full shadow-2xl hover:bg-brand-dark transition-all hover:scale-105 flex items-center gap-2 font-bold group">
+        <i data-lucide="settings" class="w-6 h-6 group-hover:rotate-90 transition-transform duration-500"></i>
+        <span class="hidden md:inline">식단 설정</span>
+    </button>
+
+    <!-- 중앙 캔버스: 스마트 스케일링 적용 영역 -->
+    <main id="poster-wrapper" class="w-full h-full flex justify-center items-center relative z-10">
+        
+        <!-- 고정 해상도(540x960) 캔버스. JS를 통해 브라우저 크기에 맞게 자동 확대/축소됨 -->
+        <div id="poster-canvas" class="bg-paper relative overflow-hidden shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)] flex flex-col z-10 transition-all" style="width: 540px; height: 960px; transform-origin: center; border-radius: 40px;">
+            <div class="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-brand-light to-transparent pointer-events-none opacity-40 z-0"></div>
+            
+            <i data-lucide="carrot" class="side-deco w-12 h-12 left-6 top-[20%]" style="animation-delay: 0s;"></i>
+            <i data-lucide="croissant" class="side-deco w-10 h-10 left-8 top-[50%]" style="animation-delay: 1s;"></i>
+            <i data-lucide="apple" class="side-deco w-10 h-10 right-8 top-[35%]" style="animation-delay: 0.5s;"></i>
+            <i data-lucide="pizza" class="side-deco w-12 h-12 right-6 top-[75%]" style="animation-delay: 1.5s;"></i>
+
+            <header class="pt-12 pb-6 px-10 text-center relative z-20 shrink-0">
+                <div class="flex justify-center items-center gap-4 mb-4">
+                    <div class="utensil-static"><i data-lucide="utensils" class="w-7 h-7 text-brand"></i></div>
+                    <div class="inline-flex items-center gap-2 bg-accent text-white px-6 py-2 rounded-full font-title text-xl shadow-md rotate-[-1deg]">
+                        <i data-lucide="calendar" class="w-5 h-5"></i>
+                        <span id="display-date"></span>
+                    </div>
+                    <div class="utensil-static" style="animation-delay: -1s;"><i data-lucide="chef-hat" class="w-7 h-7 text-brand"></i></div>
+                </div>
+                
+                <div class="relative inline-block">
+                    <h1 class="font-title text-[56px] text-gray-800 tracking-tight mb-2 title-animate drop-shadow-sm">오늘의 식단</h1>
+                    <div class="yummy-bubble absolute -top-4 -right-16 bg-brand text-white font-title text-sm py-1.5 px-3 rounded-2xl rounded-bl-none shadow-md z-20">
+                        꿀맛! 😋
+                    </div>
+                </div>
+                
+                <div class="w-20 h-1.5 bg-brand mx-auto rounded-full opacity-40"></div>
+            </header>
+
+            <div class="flex-1 px-12 flex flex-col justify-center gap-4 relative z-20 overflow-hidden" id="menu-list-container">
+                <!-- JS Rendering -->
+            </div>
+
+            <div class="pt-4 pb-12 px-10 relative z-20 text-center flex flex-col items-center gap-4 shrink-0">
+                <div id="calorie-badge" class="hidden inline-flex items-center gap-3 bg-white border-2 border-brand-light text-brand px-10 py-3 rounded-2xl shadow-sm transition-transform hover:scale-105">
+                    <i data-lucide="zap" id="calorie-icon" class="w-6 h-6 fill-brand text-brand"></i>
+                    <span class="font-bold" id="calorie-text-container">
+                        <span id="display-calories">0</span> kcal
+                    </span>
+                </div>
+                <div class="w-full border-t border-brand/10 pt-5">
+                    <p class="text-gray-400 font-medium text-[10px] uppercase tracking-[0.4em] opacity-80">고양시대화노인종합복지관 선배시민 식당</p>
+                    <p class="text-brand font-title text-xl mt-1">선배님, 맛있게 드세요!</p>
+                </div>
+            </div>
+
+            <!-- 홍보물 슬라이더는 포스터 영역(Canvas) 내부에 배치되어 완벽하게 덮임 -->
+            <div id="promo-slider" class="absolute inset-0 z-[60] bg-white flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-1000">
+                <img id="promo-img-element" class="w-full h-full object-contain" />
+            </div>
+        </div>
+    </main>
+
+    <!-- 서랍형 설정 패널 배경 (어두워지는 효과) -->
+    <div id="settings-backdrop" onclick="toggleSettings()" class="no-print fixed inset-0 bg-black/30 z-[190] hidden opacity-0 transition-opacity duration-300 backdrop-blur-sm"></div>
+
+    <!-- 서랍형 설정 패널 (우측에서 슬라이드) -->
+    <aside id="settings-panel" class="no-print fixed top-0 right-0 h-full w-[90%] max-w-[420px] bg-white shadow-[-10px_0_30px_rgba(0,0,0,0.1)] z-[200] transform translate-x-full transition-transform duration-300 flex flex-col rounded-l-3xl overflow-hidden">
+        
+        <div class="p-6 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
+            <h2 class="font-title text-2xl text-gray-800 flex items-center gap-3">
+                <i data-lucide="layout-dashboard" class="w-6 h-6 text-brand"></i> 식단 관리
+            </h2>
+            <button onclick="toggleSettings()" class="p-2 bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 transition-colors">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+            
+            <div class="bg-orange-50 p-4 rounded-xl border border-brand/20">
+                <button id="rss-btn" onclick="fetchWebMenu()" class="w-full bg-brand hover:bg-brand-dark text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-md">
+                    <i data-lucide="globe" class="w-5 h-5"></i>
+                    <span id="rss-btn-text">식단 정보 받아오기</span>
+                </button>
+            </div>
+
+            <!-- 홍보물 슬라이드 패널 -->
+            <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100 space-y-3 relative">
+                <div class="flex items-center gap-2 text-indigo-700 font-bold text-sm mb-1">
+                    <i data-lucide="images" class="w-4 h-4"></i> 홍보물 슬라이드 자동재생
+                </div>
+                <div class="text-[10px] text-indigo-500 font-medium leading-tight">
+                    이미지가 포함된 <b>폴더(또는 다수의 파일)</b>를 선택하면 식단표와 번갈아가며 자동 재생됩니다.
+                </div>
+                
+                <div class="flex flex-col gap-2">
+                    <label for="promo-upload" class="bg-white border border-indigo-200 text-indigo-600 px-4 py-2 rounded-lg text-xs font-bold text-center cursor-pointer hover:bg-indigo-50 hover:border-indigo-300 transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95">
+                        <i data-lucide="folder-open" class="w-4 h-4"></i> 폴더 및 이미지 선택
+                    </label>
+                    <input type="file" id="promo-upload" webkitdirectory directory multiple accept="image/*" class="hidden"/>
+                </div>
+                
+                <div class="flex items-center justify-between pt-1">
+                    <label class="text-[11px] font-bold text-indigo-400 uppercase tracking-widest">화면 전환 시간(초)</label>
+                    <input type="number" id="slide-duration-input" value="10" min="3" max="60" class="w-16 px-2 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs text-center focus:border-indigo-400 outline-none shadow-sm font-bold text-indigo-700">
+                </div>
+
+                <div class="flex items-center justify-between pt-3 border-t border-indigo-100 mt-2">
+                    <span id="saved-img-status" class="text-[11px] text-indigo-500 font-bold">선택된 이미지: 없음</span>
+                    <button id="clear-promo-btn" onclick="clearPromoImages()" class="hidden text-[10px] bg-red-100 text-red-600 px-3 py-1.5 rounded hover:bg-red-200 transition-colors font-bold shadow-sm">
+                        <i data-lucide="trash-2" class="w-3 h-3 inline-block align-text-bottom"></i> 초기화
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
+                <div class="flex items-center gap-2 text-gray-700 font-bold text-sm mb-2">
+                    <i data-lucide="palette" class="w-4 h-4"></i> 디자인 설정
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="text-[11px] font-bold text-gray-500 uppercase tracking-widest">카드 및 글자 크기</label>
+                        <span id="card-size-value" class="text-xs font-bold text-brand">1.0x</span>
+                    </div>
+                    <input type="range" id="card-size-slider" min="0.5" max="2.0" step="0.05" value="1.0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">날짜</label>
+                    <input type="text" id="date-input" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:border-brand outline-none text-sm font-medium">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">칼로리</label>
+                    <input type="number" id="calorie-input" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:border-brand outline-none text-sm font-medium">
+                </div>
+            </div>
+
+            <div class="space-y-3">
+                <label class="block text-[11px] font-bold text-gray-400 uppercase tracking-widest">메뉴 수동 추가</label>
+                <div class="flex flex-col gap-2">
+                    <input type="text" id="new-menu-input" placeholder="메뉴 입력" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:border-brand outline-none text-sm shadow-sm" onkeypress="handleKeyPress(event)">
+                    <div class="flex items-center justify-between px-1">
+                        <label class="flex items-center gap-2 cursor-pointer group">
+                            <input type="checkbox" id="special-checkbox" class="w-4 h-4 accent-brand cursor-pointer">
+                            <span class="text-xs font-bold text-gray-500 group-hover:text-brand transition-colors">스페셜 강조</span>
+                        </label>
+                        <button onclick="addMenu()" class="bg-brand text-white px-5 py-2 rounded-lg shadow-sm hover:bg-brand-dark transition-all flex items-center gap-1 font-bold text-xs">
+                            <i data-lucide="plus" class="w-4 h-4"></i> 추가
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <ul id="editor-menu-list" class="space-y-1.5 pb-4"></ul>
+        </div>
+
+        <div class="p-6 bg-gray-50 border-t border-gray-100 space-y-3 shrink-0">
+            <button onclick="toggleFullScreen()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm shadow-xl active:scale-95 transition-all">
+                <i data-lucide="monitor" class="w-5 h-5"></i> 전체 화면 시작 (F11 모드)
+            </button>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="saveAsPDF()" class="bg-gray-800 hover:bg-black text-white py-3 rounded-xl font-bold flex items-center justify-center gap-1 text-sm"><i data-lucide="file-down" class="w-4 h-4"></i> PDF 저장</button>
+                <button onclick="resetMenus()" class="bg-white border border-gray-200 text-gray-400 py-3 rounded-xl font-bold text-sm hover:bg-gray-50 transition-colors">초기화</button>
+            </div>
+        </div>
+    </aside>
+
+    <script>
+        let menuData = []; 
+        let calories = 0;
+        let cardScale = 1.0; 
+        
+        const TARGET_URLS = [
+            'https://www.dh-seniorwelfarecenter.co.kr/about/guide_list.php',
+            'https://www.dh-seniorwelfarecenter.co.kr/about/guide_list.php?boardid=diet&sk=&sw=&category=&offset=10'
+        ];
+
+        const today = new Date();
+        const m = today.getMonth() + 1;
+        const d = today.getDate();
+        
+        const dayOfWeekStr = ['일', '월', '화', '수', '목', '금', '토'][today.getDay()];
+        const dateString = `${today.getFullYear()}년 ${m}월 ${d}일 (${dayOfWeekStr})`;
+        
+        document.getElementById('date-input').value = dateString;
+        document.getElementById('display-date').textContent = dateString;
+
+        document.getElementById('date-input').addEventListener('input', (e) => {
+            document.getElementById('display-date').textContent = e.target.value;
+        });
+        document.getElementById('calorie-input').addEventListener('input', (e) => {
+            updateCalories(e.target.value);
+        });
+
+        const sideSlider = document.getElementById('card-size-slider');
+        const sideValue = document.getElementById('card-size-value');
+
+        function updateCardScale(val) {
+            cardScale = parseFloat(val);
+            sideSlider.value = val;
+            sideValue.innerText = cardScale.toFixed(2) + 'x';
+            renderMenus(); 
+            updateCalorieBadgeStyle(); 
+        }
+
+        sideSlider.addEventListener('input', (e) => updateCardScale(e.target.value));
+
+        function handleKeyPress(e) { if (e.key === 'Enter') addMenu(); }
+
+        function showMessage(msg) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-msg');
+            if (toastMsg) toastMsg.innerText = msg;
+            if (toast) {
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 3000);
+            }
+        }
+
+        async function fetchHtmlWithProxies(url) {
+            try {
+                const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+                const data = await res.json();
+                if (data.contents) return data.contents;
+            } catch(e) { console.warn("Proxy 1 failed", e); }
+            
+            try {
+                const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`);
+                const text = await res.text();
+                if (text) return text;
+            } catch(e) { console.warn("Proxy 2 failed", e); }
+            
+            throw new Error("웹사이트 접근 실패 (네트워크 또는 프록시 오류)");
+        }
+
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            const backdrop = document.getElementById('settings-backdrop');
+            
+            if (panel.classList.contains('translate-x-full')) {
+                panel.classList.remove('translate-x-full');
+                backdrop.classList.remove('hidden');
+                setTimeout(() => backdrop.classList.remove('opacity-0'), 10);
+            } else {
+                panel.classList.add('translate-x-full');
+                backdrop.classList.add('opacity-0');
+                setTimeout(() => backdrop.classList.add('hidden'), 300);
+            }
+        }
+
+        function updateCanvasScale() {
+            const wrapper = document.getElementById('poster-wrapper');
+            const canvas = document.getElementById('poster-canvas');
+            
+            const baseW = 540;
+            const baseH = 960;
+            
+            const isFullscreen = document.body.classList.contains('is-pseudo-fullscreen') || document.fullscreenElement;
+            const padding = isFullscreen ? 1 : 0.96;
+            
+            const scaleW = wrapper.clientWidth / baseW;
+            const scaleH = wrapper.clientHeight / baseH;
+            
+            const scale = Math.min(scaleW, scaleH) * padding;
+            
+            canvas.style.transform = `scale(${scale})`;
+            
+            if (isFullscreen) {
+                canvas.style.borderRadius = '0px';
+                canvas.style.boxShadow = 'none';
+            } else {
+                canvas.style.borderRadius = '40px';
+                canvas.style.boxShadow = '0 25px 50px -12px rgba(0,0,0,0.15)';
+            }
+        }
+        window.addEventListener('resize', updateCanvasScale);
+
+        const isTodayMatch = (txt) => {
+            if (txt.includes('~') || txt.includes('-')) return false; 
+            const keywords = [`${m}.${d}`, `${m}월${d}일`, `${m}/${d}`, `${String(m).padStart(2, '0')}.${String(d).padStart(2, '0')}`];
+            if (keywords.some(kw => txt.includes(kw))) return true;
+            const dayRegex = new RegExp(`(^|[^0-9])0?${d}(일|\\.|\\)|\\(|\\]|\\[|월|화|수|목|금|토|\\s|$)`);
+            if (dayRegex.test(txt)) return true;
+            const dowRegex = new RegExp(`^${dayOfWeekStr}요일$|^\\(${dayOfWeekStr}\\)$|^\\[${dayOfWeekStr}\\]$|^<${dayOfWeekStr}>$|^${dayOfWeekStr}$|^${dayOfWeekStr}요일식단$`);
+            return dowRegex.test(txt);
+        };
+
+        async function fetchWebMenu() {
+            const btn = document.getElementById('rss-btn');
+            const btnText = document.getElementById('rss-btn-text');
+            if (!btnText) return;
+
+            btn.disabled = true;
+            // 로딩 스피너를 텍스트 우측에 배치 (Tailwind SVG 사용)
+            btnText.innerHTML = '식단 불러오는 중... <svg class="animate-spin ml-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+
+            let allFoundMenus = [];
+            let finalCalories = 0;
+
+            const extractCalories = (text) => {
+                let match = text.match(/(\d{3,4})\s*(?:kcal|칼로리)/i);
+                if (match) return { cal: parseInt(match[1]), raw: match[0] };
+                
+                let numMatch = text.match(/(?:^|[^0-9])(\d{3,4})(?:[^0-9]|$)/);
+                if (numMatch) {
+                    let num = parseInt(numMatch[1]);
+                    if (num >= 300 && num <= 2500 && ![1199, 2024, 2025, 2026].includes(num)) {
+                        return { cal: num, raw: numMatch[1] };
+                    }
+                }
+                return null;
+            };
+
+            try {
+                let overallMatched = false;
+
+                for (const targetUrl of TARGET_URLS) {
+                    let htmlContent;
+                    try {
+                        htmlContent = await fetchHtmlWithProxies(targetUrl);
+                    } catch(e) {
+                        console.warn("페이지 접근 실패, 다음 URL 탐색 시도:", targetUrl);
+                        continue; 
+                    }
+                    
+                    let doc = new DOMParser().parseFromString(htmlContent, 'text/html');
+                    let matchedInThisSource = false;
+
+                    let targetTables = Array.from(doc.querySelectorAll('table')).filter(t => {
+                        const cap = t.querySelector('caption');
+                        return cap && (cap.textContent.includes('식단') || cap.textContent.includes('메뉴'));
+                    });
+
+                    if (targetTables.length === 0) {
+                        const links = Array.from(doc.querySelectorAll('a'));
+                        let detailHref = null;
+                        for (let a of links) {
+                            const text = a.textContent.trim();
+                            const href = a.getAttribute('href');
+                            if (href && !href.startsWith('#') && !href.startsWith('javascript') && (href.includes('?') || href.includes('&'))) {
+                                if (text.includes('식단') || text.includes('메뉴') || text.includes('주간')) {
+                                    detailHref = href;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (detailHref) {
+                            if (!detailHref.startsWith('http')) {
+                                const baseUrl = new URL(targetUrl);
+                                if (detailHref.startsWith('/')) {
+                                    detailHref = baseUrl.origin + detailHref;
+                                } else {
+                                    const pathParts = baseUrl.pathname.split('/');
+                                    pathParts.pop();
+                                    detailHref = baseUrl.origin + pathParts.join('/') + '/' + detailHref;
+                                }
+                            }
+                            try {
+                                let detailHtml = await fetchHtmlWithProxies(detailHref);
+                                if(detailHtml) {
+                                    htmlContent = detailHtml;
+                                    doc = new DOMParser().parseFromString(htmlContent, 'text/html');
+                                    targetTables = Array.from(doc.querySelectorAll('table'));
+                                }
+                            } catch(e) {
+                                console.warn("상세 페이지 진입 실패", e);
+                            }
+                        } else {
+                            targetTables = Array.from(doc.querySelectorAll('table'));
+                        }
+                    }
+
+                    if (targetTables.length > 0) {
+                        for (let table of targetTables) {
+                            const rows = Array.from(table.rows);
+                            const grid = [];
+                            for (let i = 0; i < rows.length; i++) grid.push([]);
+
+                            for (let r = 0; r < rows.length; r++) {
+                                const cells = Array.from(rows[r].cells);
+                                let c = 0;
+                                for (let cell of cells) {
+                                    while (grid[r][c] !== undefined) c++;
+                                    let html = cell.innerHTML.replace(/<br\s*\/?>/gi, '|').replace(/<\/p>|<\/div>|<\/li>/gi, '|');
+                                    let txt = html.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+                                    
+                                    const rowSpan = parseInt(cell.getAttribute('rowspan') || '1', 10);
+                                    const colSpan = parseInt(cell.getAttribute('colspan') || '1', 10);
+                                    
+                                    for (let rr = 0; rr < rowSpan; rr++) {
+                                        for (let cc = 0; cc < colSpan; cc++) {
+                                            if (grid[r + rr]) grid[r + rr][c + cc] = txt;
+                                        }
+                                    }
+                                }
+                            }
+
+                            let targetR = -1;
+                            let targetC = -1;
+                            for (let r = 0; r < grid.length; r++) {
+                                for (let c = 0; c < grid[r].length; c++) {
+                                    const txt = (grid[r][c] || '').replace(/\s+/g, '').toLowerCase();
+                                    if (isTodayMatch(txt)) {
+                                        targetR = r;
+                                        targetC = c;
+                                        break;
+                                    }
+                                }
+                                if (targetR !== -1) break;
+                            }
+
+                            if (targetR !== -1 && targetC !== -1) {
+                                let vItems = [];
+                                for (let r = targetR; r < grid.length; r++) {
+                                    if (grid[r][targetC]) vItems.push(...grid[r][targetC].split(/[|\n]/));
+                                }
+                                
+                                let hItems = [];
+                                for (let c = targetC; c < grid[targetR].length; c++) {
+                                    if (grid[targetR][c]) hItems.push(...grid[targetR][c].split(/[|\n]/));
+                                }
+
+                                const cleanItems = (items) => {
+                                    let menus = [];
+                                    let cal = 0;
+                                    items.forEach(p => {
+                                        p = p.trim();
+                                        if(!p) return;
+                                        
+                                        const calData = extractCalories(p);
+                                        if (calData) {
+                                            if(cal === 0) cal = calData.cal;
+                                            p = p.replace(calData.raw, '').trim();
+                                        }
+                                        
+                                        if (p.length > 1 && !/^[월화수목금토일]요일$/.test(p) && !/^\d+$/.test(p) && !p.includes('1199') && !p.includes('2026')) {
+                                            const splitted = p.split(/,|\/|\s{2,}|\|/).map(i => i.replace(/^[-*•·▪\s]+/, '').trim()).filter(i => i.length > 1);
+                                            menus.push(...splitted);
+                                        }
+                                    });
+                                    return { menus, cal };
+                                };
+
+                                let vResult = cleanItems(vItems);
+                                let hResult = cleanItems(hItems);
+                                let bestResult = vResult.menus.length >= hResult.menus.length ? vResult : hResult;
+                                
+                                bestResult.menus = bestResult.menus.filter(m => !isTodayMatch(m.replace(/\s/g, '').toLowerCase()));
+
+                                if (bestResult.menus.length === 1 && bestResult.menus[0].length > 15 && bestResult.menus[0].includes(' ')) {
+                                    bestResult.menus = bestResult.menus[0].split(' ').map(m => m.trim()).filter(m => m.length > 1);
+                                }
+
+                                if (bestResult.menus.length >= 1) {
+                                    allFoundMenus.push(...bestResult.menus.map(text => ({ text, isSpecial: false })));
+                                    if (finalCalories === 0) finalCalories = bestResult.cal;
+                                    matchedInThisSource = true;
+                                    break; 
+                                }
+                            }
+                        }
+                    }
+
+                    if (!matchedInThisSource) {
+                        let html = doc.body.innerHTML || htmlContent;
+                        let txt = html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>|<\/div>|<\/li>|<\/tr>|<\/td>|<\/th>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ');
+                        const lines = txt.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                        
+                        let isTodaySection = false;
+                        let tempMenus = [];
+                        
+                        const nextDate = new Date(today);
+                        nextDate.setDate(today.getDate() + 1);
+                        const nextD = nextDate.getDate();
+                        const nextDayOfWeekStr = ['일', '월', '화', '수', '목', '금', '토'][nextDate.getDay()];
+
+                        for (let line of lines) {
+                            let noSpace = line.replace(/\s/g, '').toLowerCase();
+                            
+                            if (!isTodaySection) {
+                                if (isTodayMatch(noSpace)) {
+                                    isTodaySection = true;
+                                    
+                                    const calData = extractCalories(line);
+                                    if (calData) {
+                                        if (finalCalories === 0) finalCalories = calData.cal;
+                                        line = line.replace(calData.raw, '').trim();
+                                    }
+                                    
+                                    const items = line.split(/,|\s{2,}|\|/).map(i => i.replace(/^[-*•·▪\s]+/, '').trim()).filter(i => i.length > 1 && !/^\d+$/.test(i));
+                                    tempMenus.push(...items);
+                                }
+                            } else {
+                                const nextDayMatch = new RegExp(`(^|[^0-9])0?${nextD}(일|\\)|\\(|\\]|\\[|월|화|수|목|금|토|일|\\s|$)`).test(noSpace);
+                                const nextDowMatch = new RegExp(`^${nextDayOfWeekStr}요일$|^\\(${nextDayOfWeekStr}\\)$|^\\[${nextDayOfWeekStr}\\]$|^${nextDayOfWeekStr}$`).test(noSpace);
+                                
+                                if ((nextDayMatch || nextDowMatch) && !isTodayMatch(noSpace)) break;
+                                
+                                const calData = extractCalories(line);
+                                if (calData) {
+                                    if (finalCalories === 0) finalCalories = calData.cal;
+                                    line = line.replace(calData.raw, '').trim();
+                                }
+                                
+                                if (line.length > 1 && !/^\d+$/.test(line) && !line.includes('1199') && !line.includes('2026')) {
+                                    const items = line.split(/,|\s{2,}|\|/).map(i => i.replace(/^[-*•·▪\s]+/, '').trim()).filter(i => i.length > 1);
+                                    tempMenus.push(...items);
+                                }
+                            }
+                        }
+                        
+                        tempMenus = tempMenus.filter(m => !isTodayMatch(m.replace(/\s/g, '').toLowerCase()));
+                        if (tempMenus.length >= 1) {
+                            allFoundMenus.push(...tempMenus.map(text => ({ text, isSpecial: false })));
+                            matchedInThisSource = true;
+                        }
+                    }
+
+                    if (matchedInThisSource && allFoundMenus.length > 0) {
+                        overallMatched = true;
+                        break; 
+                    }
+                }
+
+                if (overallMatched && allFoundMenus.length > 0) {
+                    const unique = [];
+                    const seen = new Set();
+                    allFoundMenus.forEach(it => {
+                        if (!seen.has(it.text)) { unique.push(it); seen.add(it.text); }
+                    });
+                    menuData = unique.slice(0, 10); 
+                    updateCalories(finalCalories || 0);
+                    renderMenus();
+                    showMessage("복지관 웹사이트에서 식단을 성공적으로 동기화했습니다.");
+                } else {
+                    showMessage("오늘 날짜의 식단을 찾을 수 없거나 데이터가 없습니다.");
+                }
+            } catch (error) {
+                console.error(error);
+                showMessage("웹사이트 구조 분석 중 오류가 발생했습니다. 수동 입력을 권장합니다.");
+            } finally {
+                btn.disabled = false;
+                btnText.innerText = '식단 불러오기';
+                lucide.createIcons();
+            }
+        }
+
+        function addMenu() {
+            const input = document.getElementById('new-menu-input');
+            const specialCheck = document.getElementById('special-checkbox');
+            const val = input.value.trim();
+            if (val) {
+                menuData.push({ text: val, isSpecial: specialCheck.checked });
+                input.value = '';
+                specialCheck.checked = false;
+                renderMenus();
+            }
+        }
+
+        function deleteMenu(index) { menuData.splice(index, 1); renderMenus(); }
+        function toggleSpecial(index) { menuData[index].isSpecial = !menuData[index].isSpecial; renderMenus(); }
+        function moveMenu(index, direction) {
+            const targetIndex = index + direction;
+            if (targetIndex < 0 || targetIndex >= menuData.length) return;
+            const temp = menuData[index];
+            menuData[index] = menuData[targetIndex];
+            menuData[targetIndex] = temp;
+            renderMenus();
+        }
+        
+        function resetMenus() {
+            menuData = [];
+            updateCalories(0);
+            renderMenus();
+            showMessage("모든 메뉴가 초기화되었습니다.");
+        }
+
+        function renderMenus() {
+            const posterList = document.getElementById('menu-list-container');
+            const editorList = document.getElementById('editor-menu-list');
+            posterList.innerHTML = '';
+            editorList.innerHTML = '';
+
+            let baseFontSize = 38; 
+            let basePadding = 20;
+
+            if (menuData.length > 8) { baseFontSize = 24; basePadding = 10; }
+            else if (menuData.length > 6) { baseFontSize = 30; basePadding = 14; }
+            else if (menuData.length > 4) { baseFontSize = 34; basePadding = 18; }
+
+            const finalFontSize = baseFontSize * cardScale;
+            const finalPadding = basePadding * cardScale;
+
+            menuData.forEach((menu, index) => {
+                const posterItem = document.createElement('div');
+                const isSpecial = menu.isSpecial;
+                
+                posterItem.className = `menu-item-card w-[85%] mx-auto rounded-[30px] px-8 shadow-sm border flex justify-center items-center relative ${isSpecial ? 'bg-[#FFE8D6] border-brand/50 text-brand shadow-md z-20' : 'bg-white/95 border-brand/10 text-gray-800'}`;
+                posterItem.style.animationDelay = `${index * 0.1}s`;
+                posterItem.style.paddingTop = `${finalPadding}px`;
+                posterItem.style.paddingBottom = `${finalPadding}px`;
+                
+                let innerHtml = '';
+                if(isSpecial) {
+                    innerHtml += `<div class="absolute inset-0 rounded-[inherit] overflow-hidden pointer-events-none z-0"><div class="special-shimmer-effect"></div></div>`;
+                    innerHtml += `<i data-lucide="star" class="fill-brand text-brand absolute left-6 opacity-40 z-10" style="width: ${finalFontSize}px; height: ${finalFontSize}px;"></i>`;
+                }
+                
+                innerHtml += `<span class="font-bold tracking-tighter text-center leading-tight card-text-bob relative z-10" style="font-size: ${finalFontSize}px; animation-delay: ${index * 0.2}s">${menu.text}</span>`;
+                
+                posterItem.innerHTML = innerHtml;
+                posterList.appendChild(posterItem);
+
+                const editorItem = document.createElement('li');
+                editorItem.className = `flex items-center justify-between gap-3 bg-white border p-2.5 pl-4 rounded-xl shadow-xs transition-all ${isSpecial ? 'bg-orange-50 border-brand/30 ring-1 ring-brand/10' : 'border-gray-100 hover:border-brand/30'}`;
+                editorItem.innerHTML = `
+                    <span class="font-bold text-sm truncate flex-1 ${isSpecial ? 'text-brand' : 'text-gray-700'}">${menu.text}</span>
+                    <div class="flex items-center gap-1 shrink-0">
+                        <button onclick="toggleSpecial(${index})" title="강조" class="p-2 rounded-lg hover:bg-gray-200 transition-colors ${isSpecial ? 'text-brand' : 'text-gray-300'}"><i data-lucide="star" class="w-4 h-4 ${isSpecial ? 'fill-brand' : ''}"></i></button>
+                        <div class="w-px h-4 bg-gray-200 mx-0.5"></div>
+                        <button onclick="moveMenu(${index}, -1)" ${index === 0 ? 'disabled' : ''} class="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 disabled:opacity-20"><i data-lucide="chevron-up" class="w-4 h-4"></i></button>
+                        <button onclick="moveMenu(${index}, 1)" ${index === menuData.length - 1 ? 'disabled' : ''} class="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 disabled:opacity-20"><i data-lucide="chevron-down" class="w-4 h-4"></i></button>
+                        <div class="w-px h-4 bg-gray-200 mx-0.5"></div>
+                        <button onclick="deleteMenu(${index})" class="p-2 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    </div>
+                `;
+                editorList.appendChild(editorItem);
+            });
+            lucide.createIcons();
+        }
+
+        function updateCalorieBadgeStyle() {
+            const badge = document.getElementById('calorie-badge');
+            const textContainer = document.getElementById('calorie-text-container');
+            const icon = document.getElementById('calorie-icon');
+            if (!badge || !textContainer) return;
+            const baseBadgeFontSize = 32; 
+            const basePaddingX = 40; 
+            const basePaddingY = 14;
+            const baseIconSize = 28;
+            badge.style.paddingLeft = `${basePaddingX * cardScale}px`;
+            badge.style.paddingRight = `${basePaddingX * cardScale}px`;
+            badge.style.paddingTop = `${basePaddingY * cardScale}px`;
+            badge.style.paddingBottom = `${basePaddingY * cardScale}px`;
+            badge.style.borderRadius = `${20 * cardScale}px`;
+            textContainer.style.fontSize = `${baseBadgeFontSize * cardScale}px`;
+            if (icon) { icon.style.width = `${baseIconSize * cardScale}px`; icon.style.height = `${baseIconSize * cardScale}px`; }
+        }
+
+        function updateCalories(val) {
+            calories = val;
+            document.getElementById('calorie-input').value = val;
+            const badge = document.getElementById('calorie-badge');
+            const display = document.getElementById('display-calories');
+            if (val > 0) {
+                if (badge) badge.classList.remove('hidden');
+                if (display) display.textContent = Number(val).toLocaleString();
+                updateCalorieBadgeStyle(); 
+            } else { if (badge) badge.classList.add('hidden'); }
+        }
+
+        function toggleFullScreen() { 
+            if (!document.fullscreenElement) {
+                const panel = document.getElementById('settings-panel');
+                if (!panel.classList.contains('translate-x-full')) {
+                    toggleSettings();
+                }
+
+                if (document.body.classList.contains('is-pseudo-fullscreen')) {
+                    document.body.classList.remove('is-pseudo-fullscreen');
+                    setTimeout(updateCanvasScale, 100);
+                } else {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        document.body.classList.add('is-pseudo-fullscreen');
+                        setTimeout(updateCanvasScale, 100);
+                        showMessage("현재 환경에서는 꽉 찬 화면으로 대체됩니다. 완벽한 전체화면은 키보드 F11을 눌러주세요.");
+                    });
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                document.body.classList.add('is-pseudo-fullscreen');
+            } else {
+                document.body.classList.remove('is-pseudo-fullscreen');
+            }
+            setTimeout(updateCanvasScale, 100); 
+        });
+
+        function saveAsPDF() {
+            showMessage("대상을 'PDF로 저장'으로 설정해 주세요. (고화질 벡터로 저장됩니다)");
+            setTimeout(() => {
+                window.print();
+            }, 1200);
+        }
+
+        let promoImages = [];
+        let currentSlide = -1; 
+        let slideTimer = null;
+        let slideDuration = 10000;
+
+        function updateSavedStatus(count) {
+            const statusEl = document.getElementById('saved-img-status');
+            const clearBtn = document.getElementById('clear-promo-btn');
+            if (count > 0) {
+                statusEl.innerHTML = `선택된 이미지: <span class="text-indigo-600 font-extrabold">${count}장</span> (자동 재생중)`;
+                if (clearBtn) clearBtn.classList.remove('hidden');
+            } else {
+                statusEl.innerText = '선택된 이미지: 없음';
+                if (clearBtn) clearBtn.classList.add('hidden');
+            }
+        }
+
+        function clearPromoImages() {
+            promoImages.forEach(url => URL.revokeObjectURL(url));
+            promoImages = [];
+            document.getElementById('promo-upload').value = '';
+            updateSavedStatus(0);
+            stopSlideshow();
+            showMessage("선택된 홍보물 이미지가 초기화되었습니다.");
+        }
+
+        document.getElementById('promo-upload').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+            
+            promoImages.forEach(url => URL.revokeObjectURL(url));
+            
+            if (files.length > 0) {
+                promoImages = files.map(file => URL.createObjectURL(file));
+                
+                updateSavedStatus(promoImages.length);
+                showMessage(`${promoImages.length}장의 이미지가 등록되어 자동 재생됩니다.`);
+                startSlideshow();
+            } else {
+                promoImages = [];
+                updateSavedStatus(0);
+                stopSlideshow();
+                if(e.target.files.length > 0) showMessage("선택하신 폴더/파일 중 이미지를 찾을 수 없습니다.");
+            }
+        });
+
+        document.getElementById('slide-duration-input').addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            if (!isNaN(val) && val >= 3) {
+                slideDuration = val * 1000;
+                if (promoImages.length > 0) startSlideshow();
+            }
+        });
+
+        function startSlideshow() {
+            if (slideTimer) clearInterval(slideTimer);
+            currentSlide = -1; 
+            document.getElementById('promo-slider').style.opacity = '0';
+            slideTimer = setInterval(nextSlide, slideDuration);
+        }
+
+        function stopSlideshow() {
+            if (slideTimer) clearInterval(slideTimer);
+            slideTimer = null;
+            currentSlide = -1;
+            document.getElementById('promo-slider').style.opacity = '0';
+        }
+
+        function nextSlide() {
+            if (promoImages.length === 0) return;
+            currentSlide++;
+            
+            if (currentSlide >= promoImages.length) {
+                currentSlide = -1; 
+            }
+
+            const slider = document.getElementById('promo-slider');
+            const imgEl = document.getElementById('promo-img-element');
+
+            if (currentSlide === -1) {
+                slider.style.opacity = '0';
+            } else {
+                imgEl.src = promoImages[currentSlide];
+                slider.style.opacity = '1';
+            }
+        }
+
+        function createBackgroundParticles() {
+            const container = document.getElementById('particles-container');
+            const emojis = ['🍎', '🥕', '🥦', '🍅', '🍳', '🍗', '🥗', '🍙', '🥟', '🍇', '🌽'];
+            for (let i = 0; i < 8; i++) {
+                const p = document.createElement('div');
+                p.className = 'bg-particle';
+                p.innerText = emojis[Math.floor(Math.random() * emojis.length)];
+                p.style.fontSize = `${Math.random() * 0.8 + 1.2}rem`;
+                p.style.left = `${Math.random() * 100}vw`;
+                p.style.top = `${Math.random() * 100}vh`;
+                p.style.animationDuration = `${Math.random() * 7 + 8}s`;
+                if (container) container.appendChild(p);
+            }
+        }
+
+        window.onload = () => { 
+            createBackgroundParticles(); 
+            fetchWebMenu(); 
+            setTimeout(updateCanvasScale, 100); 
+        };
+    </script>
+</body>
+</html>
